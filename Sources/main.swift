@@ -574,10 +574,16 @@ struct PanelView: View {
 
     /// Pulsing red border while a finished timer is waiting to be stopped.
     @ViewBuilder var alertBorder: some View {
-        if store.alerting {
-            let bright = Int(store.now.timeIntervalSince1970 * 2) % 2 == 0
+        if store.closing != nil {
+            // Stopped: lime border to match the checkmark, drawn the same way as the red "time's up" one.
             RoundedRectangle(cornerRadius: 6)
-                .stroke(Theme.red.opacity(bright ? 1 : 0.45), lineWidth: 2)
+                .strokeBorder(Theme.lime, lineWidth: 2.5)
+                .transition(.opacity)
+        } else if store.alerting {
+            let bright = Int(store.now.timeIntervalSince1970 * 2) % 2 == 0
+            // strokeBorder keeps the whole line inside the card; a centred stroke loses its outer half to the clip.
+            RoundedRectangle(cornerRadius: 6)
+                .strokeBorder(Theme.red.opacity(bright ? 1 : 0.7), lineWidth: 2.5)
                 .animation(.easeInOut(duration: 0.4), value: bright)
         }
     }
