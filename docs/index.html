@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lime Timer — a keyboard-controlled timer for your Mac</title>
+<meta name="description" content="Lime Timer is a tiny floating timer for macOS that you control entirely from your keyboard.">
+<style>
+  body { background: #0e0e10; color: #ececec; font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0; }
+  main { max-width: 680px; margin: 72px auto; padding: 0 24px; }
+  .brand { font-size: 13px; letter-spacing: .15em; color: #e6f0a3; }
+  h1 { font-size: 34px; line-height: 1.25; font-weight: 600; margin: 12px 0 16px; }
+  h2 { font-size: 13px; letter-spacing: .12em; color: #e6f0a3; font-weight: 500; margin-top: 44px; }
+  p { color: #c9c9cc; }
+  a { color: #e6f0a3; }
+  .muted { color: #8c8c90; }
+  table { border-collapse: collapse; width: 100%; margin-top: 8px; }
+  td { padding: 8px 0; border-bottom: 1px solid #26262a; vertical-align: top; }
+  td:first-child { width: 150px; white-space: nowrap; }
+  kbd { display: inline-block; background: #e6f0a3; color: #0e0e10; padding: 1px 7px; margin-right: 3px; font: 600 13px ui-monospace, monospace; }
+  .card { background: #1e1e21; padding: 14px 18px; margin: 10px 0; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">LIME TIMER</div>
+  <h1>A timer you control entirely from your keyboard.</h1>
+  <p>Lime Timer is a tiny timer that floats in the corner of your Mac's screen. Start, pause, stop and
+  edit timers from any app with a keystroke — you never have to switch windows or reach for the mouse.
+  Hover over it only when you want to see more.</p>
+  <p><a href="https://github.com/CryoSnake22/lime-timer">Source code on GitHub</a> · <a href="privacy.html">Privacy policy</a></p>
+
+  <h2>KEYBOARD SHORTCUTS</h2>
+  <p class="muted">They work from any app, at any time.</p>
+  <table>
+    <tr><td><kbd>⌃</kbd><kbd>⌥</kbd><kbd>N</kbd></td><td>New timer — type <span class="muted">25m focus</span>, <span class="muted">1h30 deep work</span>, <span class="muted">90s</span> or <span class="muted">1:30</span>, then Return. Leave it blank for a stopwatch.</td></tr>
+    <tr><td><kbd>⌃</kbd><kbd>⌥</kbd><kbd>P</kbd></td><td>Pause / resume</td></tr>
+    <tr><td><kbd>⌃</kbd><kbd>⌥</kbd><kbd>S</kbd></td><td>Stop</td></tr>
+    <tr><td><kbd>⌃</kbd><kbd>⌥</kbd><kbd>R</kbd></td><td>Restart</td></tr>
+    <tr><td><kbd>⌃</kbd><kbd>⌥</kbd><kbd>E</kbd></td><td>Edit the time — type a new time to restart at it, Esc to cancel</td></tr>
+    <tr><td><kbd>⌃</kbd><kbd>⌥</kbd><kbd>J</kbd><kbd>K</kbd></td><td>Switch between timers</td></tr>
+    <tr><td><kbd>⌃</kbd><kbd>⌥</kbd><kbd>H</kbd></td><td>Hide / show</td></tr>
+    <tr><td><kbd>⌃</kbd><kbd>⌥</kbd><kbd>,</kbd></td><td>Settings</td></tr>
+  </table>
+
+  <h2>SUPPORT</h2>
+  <div class="card">
+    <p><b>A shortcut doesn't work.</b> Another app is probably using the same key combination. Quit that app (or change
+    its shortcut) and relaunch Lime Timer.</p>
+  </div>
+  <div class="card">
+    <p><b>How do I quit it?</b> Press <kbd>⌃</kbd><kbd>⌥</kbd><kbd>,</kbd> and choose Quit, press <kbd>⌘</kbd><kbd>Q</kbd>
+    while the panel is focused, or use the timer icon in the menu bar.</p>
+  </div>
+  <div class="card">
+    <p><b>Where did it go?</b> Press <kbd>⌃</kbd><kbd>⌥</kbd><kbd>H</kbd> to show it again. If you dragged it onto a
+    screen that's no longer connected, it returns to the top-right corner.</p>
+  </div>
+  <p>Anything else: <a href="mailto:charles@chordlab.ca">charles@chordlab.ca</a> or
+  <a href="https://github.com/CryoSnake22/lime-timer/issues">open an issue on GitHub</a>.</p>
+
+  <p class="muted" style="margin-top: 56px">© 2026 Charles-Antoine Pouliot · Open source under the MIT License</p>
+</main>
+</body>
+</html>

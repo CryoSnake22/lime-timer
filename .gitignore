@@ -1,0 +1,6 @@
+build/
+.DS_Store
+# Signing material — personal to the developer account, never commit
+appstore/embedded.provisionprofile
+*.p12
+*.cer
