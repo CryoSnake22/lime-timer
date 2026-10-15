@@ -173,6 +173,8 @@ final class TimerItem: Identifiable {
     private var pausedAccumulated: TimeInterval = 0
     private var pausedAt: Date?
     var alerted = false
+    /// Stopped while other timers are running: shows a checkmark in the list, then leaves it.
+    var stopped = false
 
     init(label: String, duration: TimeInterval?) {
         self.label = label
@@ -257,7 +259,8 @@ final class Store: ObservableObject {
     @Published var selectedID: UUID?
     @Published var inputActive = false
     @Published var settingsOpen = false
-    @Published var hovering = false
+    @Published var hovering = false  // layout: card is at its expanded size
+    @Published var revealed = false  // extras (header, buttons, footer, help) are visible — follows `hovering` in a second phase
     @Published var now = Date()
 
     /// Shown for a moment after stopping a timer: animated checkmark, then fade out.
@@ -278,7 +281,9 @@ final class Store: ObservableObject {
     /// Bumped (animated) to play one shake; see `Shake`.
     @Published var shakes = 0
     /// Red border while a finished timer is still on screen (part of the shake alert).
-    var alerting: Bool { shakeEnabled && timers.contains { $0.finished } }
+    var alerting: Bool { shakeEnabled && active.contains { $0.finished } }
+    /// Timers that are still running/paused (excludes ones on their way out of the list).
+    var active: [TimerItem] { timers.filter { !$0.stopped } }
     @Published var soundEnabled: Bool = UserDefaults.standard.object(forKey: "soundEnabled") as? Bool ?? true {
         didSet { UserDefaults.standard.set(soundEnabled, forKey: "soundEnabled") }
     }
@@ -355,7 +360,7 @@ final class Store: ObservableObject {
         ticker = t
     }
 
-    var current: TimerItem? { timers.first { $0.id == selectedID } ?? timers.last }
+    var current: TimerItem? { active.first { $0.id == selectedID } ?? active.last }
 
     private var lastSignature = ""
 
@@ -368,7 +373,7 @@ final class Store: ObservableObject {
             lastSignature = signature
             now = Date()
         }
-        for t in timers where t.finished && !t.alerted {
+        for t in active where t.finished && !t.alerted {
             t.alerted = true
             // Three alerts, 1.2s apart: a chime and/or a shake each time.
             for i in 0..<3 {
@@ -403,13 +408,31 @@ final class Store: ObservableObject {
 
     /// Dismisses a finished (ringing) timer first, otherwise the selected one.
     func stop() {
-        guard let t = timers.first(where: { $0.finished }) ?? current else { return }
+        guard let t = active.first(where: { $0.finished }) ?? current else { return }
         let info = Closing(label: t.label, time: format(Int(t.elapsed)))
         if soundEnabled { Sounds.playTading() }
         if editingID == t.id { editingID = nil }
+
+        // Other timers still running: check this one off in the list, then let it leave the list.
+        // The rest of the card (hero, other rows) carries on as normal.
+        if active.count > 1 {
+            withAnimation(.easeOut(duration: 0.2)) {
+                if t.running { t.hold() }
+                t.stopped = true
+                if selectedID == t.id { selectedID = active.last?.id }
+                touch()
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.1) { [weak self, weak t] in
+                guard let self, let t else { return }
+                withAnimation(.easeInOut(duration: 0.3)) { self.timers.removeAll { $0 === t } }
+                self.touch()
+            }
+            return
+        }
+
         withAnimation(.easeOut(duration: 0.2)) {
             timers.removeAll { $0 === t }
-            if selectedID == t.id { selectedID = timers.last?.id }
+            if selectedID == t.id { selectedID = active.last?.id }
             closing = info
             closingBorder = false
             fadingOut = false
@@ -422,7 +445,7 @@ final class Store: ObservableObject {
         // Hold the checkmark, then fade the card away (last timer) or hand over to the next one.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             guard let self, self.closing?.id == info.id else { return }
-            if self.timers.isEmpty && !self.inputActive {
+            if self.active.isEmpty && !self.inputActive {
                 withAnimation(.easeIn(duration: 0.35)) { self.fadingOut = true }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                     guard self.closing?.id == info.id else { return }
@@ -449,8 +472,9 @@ final class Store: ObservableObject {
     }
 
     func cycle(_ delta: Int) {
-        guard let c = current, let i = timers.firstIndex(where: { $0 === c }) else { return }
-        selectedID = timers[(i + delta + timers.count) % timers.count].id
+        let list = active
+        guard let c = current, let i = list.firstIndex(where: { $0 === c }) else { return }
+        selectedID = list[(i + delta + list.count) % list.count].id
         touch()
     }
 }
@@ -527,24 +551,29 @@ struct PanelView: View {
 
     /// Extras (header, buttons, shortcut help) only appear while the mouse is over the panel.
     var expanded: Bool { (store.hovering || store.settingsOpen) && store.closing == nil }
+    /// Extras are laid out as soon as the card expands but only fade in once it has (nearly) settled,
+    /// so nothing visibly slides in from the side while the card is still growing.
+    var reveal: Double { store.revealed || store.settingsOpen ? 1 : 0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if expanded { header.transition(.reveal(-8)) }
+            if expanded { header.opacity(reveal).transition(.identity) }
             if store.settingsOpen {
                 SettingsView(store: store)
             } else if let closing = store.closing {
                 ClosingView(info: closing).id(closing.id)
             } else {
                 if let t = store.current {
-                    HeroView(t: t, now: store.now, store: store, showControls: expanded,
+                    HeroView(t: t, now: store.now, store: store, showControls: expanded, controlsOpacity: reveal,
                              width: expanded || store.typing ? panelWidth : compactWidth)
                 }
                 if store.timers.count > 1 {
                     VStack(spacing: 2) {
                         ForEach(store.timers) { t in
                             RowView(t: t, now: store.now, selected: t.id == store.current?.id)
-                                .onTapGesture { store.selectedID = t.id }
+                                .onTapGesture { if !t.stopped { store.selectedID = t.id } }
+                                .transition(.asymmetric(insertion: .opacity,
+                                                        removal: .opacity.combined(with: .scale(scale: 0.97, anchor: .leading))))
                         }
                     }
                     .padding(.bottom, 14)
@@ -552,7 +581,7 @@ struct PanelView: View {
                 if store.editingID != nil { editRow }
                 if store.inputActive { inputRow }
             }
-            if expanded { footer.transition(.reveal(8)) }
+            if expanded { footer.opacity(reveal).transition(.identity) }
         }
         .frame(width: expanded || store.typing ? panelWidth : compactWidth)
         .background(ZStack {
@@ -606,7 +635,7 @@ struct PanelView: View {
 
     var header: some View {
         HStack(spacing: 10) {
-            Text(store.settingsOpen ? "SETTINGS" : store.timers.isEmpty ? appName.uppercased() : "\(store.timers.count) ACTIVE")
+            Text(store.settingsOpen ? "SETTINGS" : store.timers.isEmpty ? appName.uppercased() : "\(store.active.count) ACTIVE")
                 .font(mono(10)).tracking(1.5).foregroundColor(Theme.dim(surface)).legible()
             Spacer()
             if !store.settingsOpen {
@@ -662,7 +691,8 @@ struct PanelView: View {
                         }
                     }
                 }
-                .transition(.reveal(8))
+                .opacity(reveal)
+                .transition(.identity)
             }
         }
         .padding(.horizontal, 20).padding(.top, store.timers.isEmpty ? 16 : 0).padding(.bottom, 16)
@@ -738,29 +768,26 @@ extension View {
 }
 
 /// One spring for every hover/expand change, so everything moves together.
-let panelSpring = Animation.spring(response: 0.38, dampingFraction: 0.86)
+let panelSpring = Animation.spring(response: 0.3, dampingFraction: 0.9)
 
-extension AnyTransition {
-    /// Extras slide a few points from where they "come from" while fading — no popping.
-    static func reveal(_ dy: CGFloat) -> AnyTransition {
-        .asymmetric(
-            insertion: .opacity.combined(with: .offset(y: dy)).animation(panelSpring.delay(0.04)),
-            removal: .opacity.combined(with: .offset(y: dy / 2)).animation(.easeOut(duration: 0.12)))
+/// The big time, rendered once at 40pt and scaled as a whole. Animating the font size instead
+/// re-lays-out the glyphs every frame, which makes the digits jitter while the card resizes.
+struct ScaledTime: View {
+    let text: String
+    let scale: CGFloat
+
+    var body: some View {
+        let natural = NSAttributedString(string: text, attributes: [
+            .font: NSFont.monospacedSystemFont(ofSize: 40, weight: .medium),
+        ]).size()
+        Text(text)
+            .font(mono(40, .medium))
+            .fixedSize()
+            .scaleEffect(scale, anchor: .topLeading)
+            .frame(width: ceil(natural.width) * scale, height: ceil(natural.height) * scale, alignment: .topLeading)
     }
 }
 
-/// Font size that interpolates during animations (a plain .font() change just snaps).
-struct AnimatedMono: ViewModifier, Animatable {
-    var size: CGFloat
-    var weight: Font.Weight
-    var animatableData: CGFloat {
-        get { size }
-        set { size = newValue }
-    }
-    func body(content: Content) -> some View { content.font(mono(size, weight)) }
-}
-
-/// Horizontal wobble that dies down. Each +1 of `progress` (animated) plays one shake.
 struct Shake: GeometryEffect {
     var progress: CGFloat
     var animatableData: CGFloat {
@@ -900,6 +927,7 @@ struct HeroView: View {
     let now: Date
     let store: Store
     let showControls: Bool
+    let controlsOpacity: Double
     let width: CGFloat
 
     var body: some View {
@@ -913,9 +941,8 @@ struct HeroView: View {
             }
             .font(mono(10)).tracking(1.5).foregroundColor(Theme.dim(surface)).legible()
 
-            HStack(alignment: .lastTextBaseline) {
-                Text(t.display)
-                    .modifier(AnimatedMono(size: compact ? 28 : 40, weight: .medium))
+            HStack(alignment: .bottom) {
+                ScaledTime(text: t.display, scale: compact ? 28.0 / 40 : 1)
                     .foregroundColor(t.finished ? Theme.orange : t.running ? Theme.text : Theme.dim(surface)).legible()
                     .opacity(blinkOff ? 0.35 : 1)
                 Spacer(minLength: 8)
@@ -949,7 +976,8 @@ struct HeroView: View {
                 Chip(icon: "xmark", title: "STOP") { store.stop() }
                 Chip(icon: "arrow.counterclockwise", title: "RESET") { store.restart() }
                 }
-                .transition(.reveal(8))
+                .opacity(controlsOpacity)
+                .transition(.identity)
             }
         }
         .padding(.horizontal, compact ? 16 : 20)
@@ -978,6 +1006,22 @@ struct Chip: View {
     }
 }
 
+/// Lime square with a checkmark that draws itself in — the list-row version of ClosingView.
+struct RowCheck: View {
+    @State private var drawn = false
+    var body: some View {
+        ZStack {
+            Rectangle().fill(Theme.lime)
+            CheckShape()
+                .trim(from: 0, to: drawn ? 1 : 0)
+                .stroke(Color.black.opacity(0.8), style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
+                .padding(6)
+        }
+        .frame(width: 26, height: 26)
+        .onAppear { withAnimation(.easeOut(duration: 0.3).delay(0.05)) { drawn = true } }
+    }
+}
+
 struct RowView: View {
     @Environment(\.surfaceOpacity) var surface
     let t: TimerItem
@@ -990,16 +1034,22 @@ struct RowView: View {
             : !t.running ? (Theme.grey, "pause.fill")
             : t.duration == nil ? (Theme.lime, "stopwatch.fill") : (Theme.blue, "hourglass")
         HStack(spacing: 12) {
-            Rectangle().fill(color).frame(width: 26, height: 26)
-                .overlay(Image(systemName: icon).font(.system(size: 10, weight: .bold)).foregroundColor(.black.opacity(0.8)))
+            if t.stopped {
+                RowCheck() // same lime checkmark as the "done" card, drawn in
+            } else {
+                Rectangle().fill(color).frame(width: 26, height: 26)
+                    .overlay(Image(systemName: icon).font(.system(size: 10, weight: .bold)).foregroundColor(.black.opacity(0.8)))
+            }
             Text(t.label.uppercased()).font(mono(11, .medium)).tracking(1.2).lineLimit(1)
-                .foregroundColor(selected ? Theme.text : Theme.dim(surface)).legible()
+                .foregroundColor(selected || t.stopped ? Theme.text : Theme.dim(surface)).legible()
             Spacer()
-            Text(t.display).font(mono(11)).foregroundColor(t.finished ? Theme.orange : Theme.dim(surface)).legible()
+            if !t.stopped { // a stopped row is just the checkmark + green highlight
+                Text(t.display).font(mono(11)).foregroundColor(t.finished ? Theme.orange : Theme.dim(surface)).legible()
+            }
         }
         .padding(.horizontal, 20).padding(.vertical, 6)
-        .background(selected ? Theme.raised.surface(surface).opacity(0.6) : Color.clear)
-        .overlay(Rectangle().fill(selected ? Theme.lime : .clear).frame(width: 2), alignment: .leading)
+        .background(t.stopped ? Theme.lime.opacity(0.16) : selected ? Theme.raised.surface(surface).opacity(0.6) : Color.clear)
+        .overlay(Rectangle().fill(selected || t.stopped ? Theme.lime : .clear).frame(width: 2), alignment: .leading)
         .contentShape(Rectangle())
     }
 }
@@ -1074,6 +1124,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     var hosting: HostingView<PanelView>!
     var cancellable: AnyCancellable?
     var hoverTimer: Timer?
+    var hoverTarget = false               // where the hover state is heading (phases may still be running)
+    var hoverPhase: DispatchWorkItem?     // the pending second phase of a hover change
     var appliedBlur: Int32 = -1
     var hiding = false
     var focusedAt = Date.distantPast
@@ -1111,13 +1163,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
             guard let self else { return }
             let pointerInside = self.panel.isVisible && self.cardRect.contains(NSEvent.mouseLocation)
             // While dragging the card (button held after hovering), stay expanded even if the pointer outruns the window.
-            let dragging = self.store.hovering && NSEvent.pressedMouseButtons & 1 != 0
+            let dragging = self.hoverTarget && NSEvent.pressedMouseButtons & 1 != 0
             let inside = pointerInside || dragging
             // Only the card takes clicks; the transparent rest of the window passes them through.
             self.panel.ignoresMouseEvents = !inside
-            if inside != self.store.hovering {
-                withAnimation(panelSpring) { self.store.hovering = inside }
-            }
+            if inside != self.hoverTarget { self.setHover(inside) }
         }
         RunLoop.main.add(hover, forMode: .common)
         hoverTimer = hover
@@ -1159,6 +1209,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         beginInput()
         return false
+    }
+
+    /// Two-phase hover so nothing slides around while the card resizes:
+    /// in  → the card grows (extras laid out but invisible), then the extras fade in where they belong;
+    /// out → the extras fade out, then the card shrinks.
+    func setHover(_ on: Bool) {
+        hoverTarget = on
+        hoverPhase?.cancel()
+        let second: DispatchWorkItem
+        if on {
+            withAnimation(panelSpring) { store.hovering = true }
+            second = DispatchWorkItem { [weak self] in
+                withAnimation(.easeOut(duration: 0.18)) { self?.store.revealed = true }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: second)
+        } else {
+            withAnimation(.easeOut(duration: 0.1)) { store.revealed = false }
+            second = DispatchWorkItem { [weak self] in
+                withAnimation(panelSpring) { self?.store.hovering = false }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.09, execute: second)
+        }
+        hoverPhase = second
     }
 
     func handle(_ action: Action) {
