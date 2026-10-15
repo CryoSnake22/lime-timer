@@ -2,8 +2,11 @@
 # Builds the Mac App Store version, "Lime Timer". Completely separate from the dev QuickTimer build:
 # different name, bundle ID (com.charlo.limetimer), settings, and output folder (build/appstore/).
 #
-# Usage: ./build-appstore.sh            → build/appstore/Lime Timer.app, sandboxed + ad-hoc signed, for local testing
-#        ./build-appstore.sh --release  → signed for submission + build/appstore/LimeTimer.pkg (upload with Transporter)
+# Usage: ./build-appstore.sh            → build/appstore-test/Lime Timer.app, sandboxed + ad-hoc signed: opens locally
+#        ./build-appstore.sh --release  → build/appstore/, signed for submission + LimeTimer.pkg (upload with Transporter)
+#
+# The release build can't be opened directly: macOS only runs App Store-signed apps once installed
+# from the App Store or TestFlight. Use the test build to try it on your Mac.
 #
 # --release needs (create them in Xcode → Settings → Accounts → Manage Certificates, and the developer portal):
 #   • an "Apple Distribution" certificate
@@ -14,7 +17,8 @@ cd "$(dirname "$0")"
 
 TEAM_ID="Q654928MT3"
 BUNDLE_ID="com.charlo.limetimer"
-OUT=build/appstore
+RELEASE=false; [[ "${1:-}" == "--release" ]] && RELEASE=true
+OUT=build/appstore; $RELEASE || OUT=build/appstore-test # separate folders so they never overwrite each other
 APP="$OUT/Lime Timer.app"
 
 rm -rf "$OUT"
@@ -47,7 +51,7 @@ done
 
 xattr -cr "$APP" # App Store builds must not carry com.apple.quarantine
 
-if [[ "${1:-}" == "--release" ]]; then
+if $RELEASE; then
   PROFILE=appstore/embedded.provisionprofile
   [[ -f "$PROFILE" ]] || { echo "Missing $PROFILE (Mac App Store profile for $BUNDLE_ID)"; exit 1; }
   if grep -q "REPLACE-ME" Sources/main.swift; then
@@ -69,5 +73,5 @@ if [[ "${1:-}" == "--release" ]]; then
   echo "Built $OUT/LimeTimer.pkg — upload it with Transporter (or: xcrun altool --upload-app)"
 else
   codesign --force --sign - --entitlements appstore/LimeTimer.entitlements "$APP"
-  echo "Built $APP (sandboxed, ad-hoc signed — for local testing only)"
+  echo "Built $APP (sandboxed, ad-hoc signed — opens locally; not for upload)"
 fi

@@ -41,7 +41,7 @@ Requires macOS 13+ and Xcode (or the command-line tools) for `swiftc`.
 ```sh
 ./build.sh             # dev build → build/QuickTimer.app
 ./build.sh --install   # …and copy to ~/Applications and launch
-./build-appstore.sh    # App Store variant → build/appstore/Lime Timer.app (sandboxed)
+./build-appstore.sh    # App Store variant → build/appstore-test/Lime Timer.app (sandboxed, opens locally)
 ```
 
 The whole app is one file, `Sources/main.swift`. The two builds differ in one place: the dev build
