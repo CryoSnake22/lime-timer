@@ -61,8 +61,12 @@ let maxBlurRadius = 40.0
 /// "QuickTimer" for the dev build, "Lime Timer" for the App Store build (from Info.plist).
 let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "QuickTimer"
 
-#if APPSTORE
 let privacyPolicyURL = URL(string: "https://cryosnake22.github.io/lime-timer/privacy.html")!
+
+// The ONLY difference between the dev build and the App Store build (-D APPSTORE) is the blur:
+// dev uses a private window-server call (adjustable radius); App Store uses public APIs only.
+// Every other feature must stay identical in both — don't add other #if APPSTORE blocks.
+#if APPSTORE
 
 /// Public-API blur: the standard NSVisualEffectView with its tint layers hidden, which leaves a
 /// true-colour Gaussian blur (fixed strength). If a future macOS renames those layers, this
@@ -796,12 +800,10 @@ struct SettingsView: View {
             ToggleRow(title: "SOUNDS", on: store.soundEnabled) { store.soundEnabled.toggle() }
             ToggleRow(title: "SHAKE WHEN DONE", on: store.shakeEnabled) { store.shakeEnabled.toggle() }
             ToggleRow(title: "LAUNCH AT LOGIN", on: store.launchAtLogin) { store.toggleLaunchAtLogin() }
-            #if APPSTORE
             Button { NSWorkspace.shared.open(privacyPolicyURL) } label: {
                 Text("PRIVACY POLICY ↗").font(mono(9)).tracking(1.5).foregroundColor(Theme.dim(store.opacity)).legible()
             }
             .buttonStyle(.plain)
-            #endif
             QuitButton()
         }
         .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 20)
@@ -1128,11 +1130,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         let event = NSAppleEventManager.shared().currentAppleEvent
         let atLogin = event?.eventID == AEEventID(kAEOpenApplication)
             && event?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue == OSType(keyAELaunchedAsLogInItem)
-        #if APPSTORE
-        let demo: String? = nil
-        #else
         let demo = ProcessInfo.processInfo.environment["QT_DEMO"]
-        #endif
         if let demo {
             // Testing/screenshots: QT_DEMO="25m focus" starts that timer at a fixed spot, without stealing focus.
             anchor = NSPoint(x: 700, y: 700)

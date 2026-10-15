@@ -44,7 +44,7 @@ Requires macOS 13+ and Xcode (or the command-line tools) for `swiftc`.
 ./build-appstore.sh    # App Store variant → build/appstore-test/Lime Timer.app (sandboxed, opens locally)
 ```
 
-The whole app is one file, `Sources/main.swift`. The two builds differ in one place: the dev build
+The whole app is one file, `Sources/main.swift`. The two builds have full feature parity and differ in exactly one place: the dev build
 (`QuickTimer`) uses a private window-server call for an adjustable Gaussian blur, while the App Store build
 (`-D APPSTORE`) uses only public APIs and has an on/off blur instead.
 
