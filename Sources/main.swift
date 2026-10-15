@@ -263,6 +263,8 @@ final class Store: ObservableObject {
     /// Shown for a moment after stopping a timer: animated checkmark, then fade out.
     struct Closing { let id = UUID(); let label: String; let time: String }
     @Published var closing: Closing?
+    /// Lime border for the "done" card — shown a beat after `closing`, once the old UI has faded out.
+    @Published var closingBorder = false
     @Published var fadingOut = false
     var cardSize: CGSize = .zero // measured by the view; used for hover hit-testing
 
@@ -409,9 +411,14 @@ final class Store: ObservableObject {
             timers.removeAll { $0 === t }
             if selectedID == t.id { selectedID = timers.last?.id }
             closing = info
+            closingBorder = false
             fadingOut = false
         }
         touch()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self, self.closing?.id == info.id else { return }
+            withAnimation(.easeOut(duration: 0.2)) { self.closingBorder = true }
+        }
         // Hold the checkmark, then fade the card away (last timer) or hand over to the next one.
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
             guard let self, self.closing?.id == info.id else { return }
@@ -420,10 +427,11 @@ final class Store: ObservableObject {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
                     guard self.closing?.id == info.id else { return }
                     self.closing = nil
+                    self.closingBorder = false
                     self.fadingOut = false
                 }
             } else {
-                withAnimation(.easeOut(duration: 0.2)) { self.closing = nil }
+                withAnimation(.easeOut(duration: 0.2)) { self.closing = nil; self.closingBorder = false }
             }
         }
     }
@@ -431,6 +439,7 @@ final class Store: ObservableObject {
     /// Cancels the stop animation (e.g. when starting a new timer mid-fade).
     func clearClosing() {
         closing = nil
+        closingBorder = false
         fadingOut = false
     }
 
@@ -554,7 +563,8 @@ struct PanelView: View {
             #endif
             Theme.bg.opacity(store.blur > 0 ? max(store.opacity, 0.04) : store.opacity)
         })
-        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Theme.border.surface(store.opacity), lineWidth: 1))
+        // Faint light hairline so the card's edge stays visible on dark backgrounds too.
+        .overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.white.opacity(0.14), lineWidth: 1))
         .overlay(alertBorder)
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .fixedSize(horizontal: false, vertical: true)
@@ -580,9 +590,11 @@ struct PanelView: View {
     @ViewBuilder var alertBorder: some View {
         if store.closing != nil {
             // Stopped: lime border to match the checkmark, drawn the same way as the red "time's up" one.
-            RoundedRectangle(cornerRadius: 6)
-                .strokeBorder(Theme.lime, lineWidth: 2.5)
-                .transition(.opacity)
+            if store.closingBorder {
+                RoundedRectangle(cornerRadius: 6)
+                    .strokeBorder(Theme.lime, lineWidth: 2.5)
+                    .transition(.opacity)
+            }
         } else if store.alerting {
             let bright = Int(store.now.timeIntervalSince1970 * 2) % 2 == 0
             // strokeBorder keeps the whole line inside the card; a centred stroke loses its outer half to the clip.
@@ -1097,7 +1109,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         // Hover detection that works even while another app is focused.
         let hover = Timer(timeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
             guard let self else { return }
-            let inside = self.panel.isVisible && self.cardRect.contains(NSEvent.mouseLocation)
+            let pointerInside = self.panel.isVisible && self.cardRect.contains(NSEvent.mouseLocation)
+            // While dragging the card (button held after hovering), stay expanded even if the pointer outruns the window.
+            let dragging = self.store.hovering && NSEvent.pressedMouseButtons & 1 != 0
+            let inside = pointerInside || dragging
             // Only the card takes clicks; the transparent rest of the window passes them through.
             self.panel.ignoresMouseEvents = !inside
             if inside != self.store.hovering {
